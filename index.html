@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFB.FAN Live Sniper (Shared View)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #e5e7eb; }
+        .card-link { display: block; text-decoration: none; color: inherit; }
+        .card { background-color: #1f2937; border: 1px solid #374151; border-radius: 0.75rem; transition: transform 0.2s, box-shadow 0.2s; height: 100%; }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+        .console-xbox { color: #10b981; border-color: #10b981; }
+        .console-playstation { color: #3b82f6; border-color: #3b82f6; }
+        .tab-btn { transition: all 0.2s ease-in-out; border-bottom: 3px solid transparent; }
+        .tab-btn.active { color: #3b82f6; border-color: #3b82f6; }
+        .tab-btn:not(.active) { color: #d1d5db; }
+        .tab-content { display: none; }
+        .tab-content.active { display: grid; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .new-card-container { animation: fadeIn 0.5s ease-out forwards; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-screen-2xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-white">CFB.FAN Live Sniper</h1>
+            <p id="page-mode" class="text-lg text-gray-400 mt-2">Mode: <span class="font-bold text-yellow-400">View-Only</span></p>
+        </header>
+
+        <!-- Controls Panel -->
+        <div class="bg-gray-800 p-6 rounded-xl shadow-lg mb-8 sticky top-4 z-10 border border-gray-700">
+            <div id="controls-panel-host" class="hidden">
+                 <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6 items-center">
+                    <div class="lg:col-span-1">
+                        <button id="toggleScannerBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-md">Start Scanner</button>
+                    </div>
+                    <div class="md:col-span-2 lg:col-span-1">
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Median Types</label>
+                        <div id="medianTypeFilter" class="flex space-x-4 bg-gray-700 p-2 rounded-lg">
+                            <button data-median="10" class="median-btn flex-1 text-center py-2 rounded-md transition-all duration-200 bg-blue-600 text-white">10-Sale</button>
+                            <button data-median="5" class="median-btn flex-1 text-center py-2 rounded-md transition-all duration-200 bg-gray-600 text-gray-300">5-Sale</button>
+                            <button data-median="3" class="median-btn flex-1 text-center py-2 rounded-md transition-all duration-200 bg-gray-600 text-gray-300">3-Sale</button>
+                        </div>
+                    </div>
+                    <div class="lg:col-span-2">
+                         <label for="profitSlider" class="block text-sm font-medium text-gray-300 mb-2">Minimum Profit: <span id="profitValue" class="font-bold text-white">10,000</span> Coins</label>
+                         <input id="profitSlider" type="range" min="5000" max="100000" step="1000" value="10000" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+                <div id="status" class="text-center text-gray-400 mt-4 text-sm h-5">Scanner is idle. Helper script required.</div>
+            </div>
+             <div id="controls-panel-viewer" class="text-center text-lg text-gray-300">
+                Watching for live snipes...
+            </div>
+        </div>
+
+        <!-- Tabs Navigation -->
+        <div class="mb-8 flex justify-center border-b border-gray-700">
+            <button id="tab-xbox" class="tab-btn active px-6 py-3 text-lg font-medium">Xbox Snipes</button>
+            <button id="tab-playstation" class="tab-btn px-6 py-3 text-lg font-medium">PlayStation Snipes</button>
+        </div>
+
+        <!-- Main Content Area -->
+        <div>
+            <main id="xboxFeed" class="tab-content active grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6"></main>
+            <main id="playstationFeed" class="tab-content grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-6"></main>
+        </div>
+    </div>
+
+    <script>
+    // -----------------------------------------------------------------------------
+    // --- Your Firebase Config ---
+    // -----------------------------------------------------------------------------
+    const firebaseConfig = {
+      apiKey: "AIzaSyDyNZGfhc0lJi14TJzlRDngFUFY47LCoBk",
+      authDomain: "snipes-31c9e.firebaseapp.com",
+      databaseURL: "https://snipes-31c9e-default-rtdb.firebaseio.com",
+      projectId: "snipes-31c9e",
+      storageBucket: "snipes-31c9e.appspot.com",
+      messagingSenderId: "617023725696",
+      appId: "1:617023725696:web:0fc9f269a10417950c8665",
+      measurementId: "G-5KN0CY3R7F"
+    };
+    // -----------------------------------------------------------------------------
+
+    // --- SCRIPT LOGIC ---
+    (function() {
+        'use strict';
+
+        if (!firebaseConfig.apiKey) {
+            alert("CRITICAL ERROR: Firebase config is missing from the HTML file. Please edit the file and add your details.");
+            return;
+        }
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let allSnipes = new Set();
+        let currentFilters = { medians: [10, 5, 3], minProfit: 10000 };
+        let isHost = false; // By default, everyone is a viewer
+
+        const ui = {
+            toggleScannerBtn: document.getElementById('toggleScannerBtn'),
+            statusDiv: document.getElementById('status'),
+            xboxFeed: document.getElementById('xboxFeed'),
+            playstationFeed: document.getElementById('playstationFeed'),
+            medianTypeFilter: document.getElementById('medianTypeFilter'),
+            profitSlider: document.getElementById('profitSlider'),
+            profitValue: document.getElementById('profitValue'),
+            tabXbox: document.getElementById('tab-xbox'),
+            tabPlaystation: document.getElementById('tab-playstation'),
+            pageMode: document.getElementById('page-mode'),
+            hostControls: document.getElementById('controls-panel-host'),
+            viewerControls: document.getElementById('controls-panel-viewer'),
+        };
+
+        function initializeFirebaseListener() {
+            const snipesRef = db.ref('snipes');
+            // Listen for new children added to the 'snipes' node
+            snipesRef.on('child_added', (snapshot) => {
+                const newSnipe = snapshot.val();
+                // On the viewer page, this will always render.
+                // On the host page, this check prevents a duplicate render.
+                if (newSnipe && !allSnipes.has(newSnipe.id)) {
+                    allSnipes.add(newSnipe.id);
+                    renderNewSnipe(newSnipe);
+                }
+            });
+            console.log("Firebase listener initialized. Waiting for snipes...");
+        }
+
+        // Host-only functions
+        let scannerRunning = false;
+        let playerQueue = [];
+        let priceCheckQueue = [];
+        let isProcessingPrices = false;
+
+        function requestData(detail) {
+            document.dispatchEvent(new CustomEvent('request-data-from-helper', { detail }));
+        }
+
+        async function runScanCycle() {
+            if (!scannerRunning || !isHost) return;
+            ui.statusDiv.textContent = 'Starting new scan cycle...';
+            playerQueue = Array.from({ length: 22 }, (_, i) => i + 1);
+            fetchNextPlayerPage();
+        }
+
+        function fetchNextPlayerPage() {
+            if (!scannerRunning || playerQueue.length === 0) {
+                if (scannerRunning && !isProcessingPrices) {
+                    ui.statusDiv.textContent = 'Scan cycle complete. Waiting 15 seconds...';
+                    setTimeout(runScanCycle, 15000);
+                }
+                return;
+            }
+            const page = playerQueue.shift();
+            ui.statusDiv.textContent = `Fetching player list from page ${page}...`;
+            const requestId = `list-page-${page}`;
+            const listener = (event) => {
+                if (event.detail.requestId === requestId) {
+                    document.removeEventListener('data-response-from-helper', listener);
+                    if(event.detail.data) handlePlayerListResponse(event.detail.data);
+                    fetchNextPlayerPage();
+                }
+            };
+            document.addEventListener('data-response-from-helper', listener);
+            requestData({ type: 'playerList', page, requestId });
+        }
+
+        function handlePlayerListResponse(data) {
+            priceCheckQueue.push(...data.players);
+            if (!isProcessingPrices) processPriceCheckQueue();
+        }
+
+        async function processPriceCheckQueue() {
+            isProcessingPrices = true;
+            while (priceCheckQueue.length > 0) {
+                if (!scannerRunning) break;
+                const player = priceCheckQueue.shift();
+                ui.statusDiv.textContent = `Checking prices for ${player.name}... (${priceCheckQueue.length} remaining)`;
+
+                const promises = ['xbox-series-x', 'playstation-5'].map(platform =>
+                    new Promise(resolve => {
+                        const requestId = `price-${player.uniqueId}-${platform}-${Date.now()}`;
+                        const listener = (event) => {
+                            if (event.detail.requestId === requestId) {
+                                document.removeEventListener('data-response-from-helper', listener);
+                                if(event.detail.data) checkPricesForPlayer(player, platform, event.detail.data);
+                                resolve();
+                            }
+                        };
+                        document.addEventListener('data-response-from-helper', listener);
+                        requestData({ type: 'playerPrices', player, platform, requestId });
+                    })
+                );
+                await Promise.all(promises);
+            }
+            isProcessingPrices = false;
+            if(scannerRunning && playerQueue.length === 0) {
+                ui.statusDiv.textContent = 'Scan cycle complete. Waiting 15 seconds...';
+                setTimeout(runScanCycle, 15000);
+            }
+        }
+
+        function checkPricesForPlayer(player, platform, data) {
+            const { priceData, portraitUrl } = data;
+            if (!priceData || !priceData.pricesData.liveAuctions) return;
+            const auctions = priceData.pricesData.liveAuctions.map(a => parseInt(a.buyNowPrice, 10)).filter(p => Number.isFinite(p));
+            if (!auctions.length) return;
+            const buyNowPrice = Math.min(...auctions);
+
+            currentFilters.medians.forEach(n => {
+                const median = calculateMedianOfLastNSales(priceData, n);
+                if (median > 0 && buyNowPrice < median) {
+                    const profit = calculateProfitAfterTax(buyNowPrice, median);
+                    if (profit >= currentFilters.minProfit) {
+                        const snipeId = `${player.uniqueId}-${platform}-${n}-${buyNowPrice}`;
+                         if (!allSnipes.has(snipeId)) {
+                            allSnipes.add(snipeId);
+                            const newSnipe = { id: snipeId, player: {...player, portraitUrl}, platform, buyNowPrice, median, profit, medianType: n };
+                            renderNewSnipe(newSnipe);
+                            requestData({ type: 'newSnipe', data: newSnipe });
+                        }
+                    }
+                }
+            });
+        }
+        // --- End of Host-only functions ---
+
+
+        // --- Shared functions ---
+        const formatNumberWithCommas = (number) => Number.isFinite(number) ? number.toLocaleString() : 'N/A';
+        const calculateProfitAfterTax = (buyNow, median) => {
+            if (!Number.isFinite(buyNow) || !Number.isFinite(median)) return 0;
+            return Math.max(0, Math.round((median - buyNow) - (median * 0.10)));
+        };
+        const calculateMedianOfLastNSales = (data, n) => {
+             try {
+                if (!data?.pricesData?.completedAuctions || data.pricesData.completedAuctions.length < n) return 0;
+                const recentSales = data.pricesData.completedAuctions.slice(0, n).map(a => Number(String(a.soldPrice).replace(/,/g, ''))).filter(p => Number.isFinite(p));
+                if (recentSales.length < n) return 0;
+                const sorted = recentSales.sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                return Math.round((sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2) / 100) * 100;
+            } catch (error) { return 0; }
+        };
+
+        function renderNewSnipe(snipe) {
+            const profitColorClass = snipe.profit > 20000 ? 'text-green-400' : snipe.profit > 10000 ? 'text-yellow-400' : 'text-orange-400';
+            const platformColorClass = snipe.platform === 'xbox-series-x' ? 'console-xbox' : 'console-playstation';
+            const platformName = snipe.platform === 'xbox-series-x' ? 'Xbox' : 'PS5';
+            
+            // Create a container for the card to handle grid layout
+            const cardContainer = document.createElement('div');
+            cardContainer.className = 'new-card-container';
+            cardContainer.dataset.medianType = snipe.medianType;
+            cardContainer.dataset.profit = snipe.profit;
+
+            // The link now wraps the card content
+            cardContainer.innerHTML = `
+                <a href="${snipe.player.link}" target="_blank" rel="noopener noreferrer" class="card-link">
+                    <div class="card p-4 flex flex-col">
+                        <div class="flex-shrink-0 relative">
+                            <img src="${snipe.player.portraitUrl}" alt="${snipe.player.name}" class="w-full h-auto rounded-md" onerror="this.src='https://placehold.co/200x280/1f2937/e5e7eb?text=No+Image'">
+                            <div class="absolute top-2 right-2 bg-gray-900 bg-opacity-70 text-white text-xl font-bold px-3 py-1 rounded-full">${snipe.player.ovr}</div>
+                        </div>
+                        <div class="flex-grow mt-4 flex flex-col">
+                            <h3 class="text-lg font-semibold text-white truncate">${snipe.player.name}</h3>
+                            <p class="text-sm text-gray-400">${snipe.player.promo || 'Core'}</p>
+                            <div class="mt-4 grid grid-cols-2 gap-x-4 text-sm">
+                                <div><p class="text-gray-400">Buy Now</p><p class="font-bold text-lg text-white">${formatNumberWithCommas(snipe.buyNowPrice)}</p></div>
+                                <div><p class="text-gray-400">${snipe.medianType}-Sale Median</p><p class="font-bold text-lg text-white">${formatNumberWithCommas(snipe.median)}</p></div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-gray-700 flex-grow flex flex-col justify-end">
+                                  <p class="text-gray-400 text-sm">Est. Profit (after tax)</p>
+                                  <p class="font-bold text-2xl ${profitColorClass}">${formatNumberWithCommas(snipe.profit)}</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 text-xs font-semibold uppercase border-2 ${platformColorClass} rounded-full px-3 py-1 self-center">${platformName}</div>
+                    </div>
+                </a>`;
+
+            const targetFeed = snipe.platform === 'xbox-series-x' ? ui.xboxFeed : ui.playstationFeed;
+            targetFeed.prepend(cardContainer);
+            applyFilters();
+        }
+
+        function applyFilters() {
+            document.querySelectorAll('.new-card-container').forEach(card => {
+                const medianType = parseInt(card.dataset.medianType, 10);
+                const profit = parseInt(card.dataset.profit, 10);
+                card.style.display = currentFilters.medians.includes(medianType) && profit >= currentFilters.minProfit ? 'block' : 'none';
+            });
+        }
+
+        function switchTab(tab) {
+            if (tab === 'xbox') {
+                ui.tabXbox.classList.add('active'); ui.tabPlaystation.classList.remove('active');
+                ui.xboxFeed.classList.add('active'); ui.playstationFeed.classList.remove('active');
+            } else {
+                ui.tabPlaystation.classList.add('active'); ui.tabXbox.classList.remove('active');
+                ui.playstationFeed.classList.add('active'); ui.xboxFeed.classList.remove('active');
+            }
+        }
+
+        ui.tabXbox.addEventListener('click', () => switchTab('xbox'));
+        ui.tabPlaystation.addEventListener('click', () => switchTab('playstation'));
+
+        ui.medianTypeFilter.addEventListener('click', (e) => {
+             if (e.target.classList.contains('median-btn')) {
+                const median = parseInt(e.target.dataset.median, 10);
+                const index = currentFilters.medians.indexOf(median);
+                if (index > -1) {
+                    if (currentFilters.medians.length > 1) {
+                        currentFilters.medians.splice(index, 1);
+                        e.target.classList.replace('bg-blue-600', 'bg-gray-600');
+                        e.target.classList.replace('text-white', 'text-gray-300');
+                    }
+                } else {
+                    currentFilters.medians.push(median);
+                    e.target.classList.replace('bg-gray-600', 'bg-blue-600');
+                    e.target.classList.replace('text-gray-300', 'text-white');
+                }
+                applyFilters();
+            }
+        });
+
+        ui.profitSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value, 10);
+            currentFilters.minProfit = value;
+            ui.profitValue.textContent = formatNumberWithCommas(value);
+            applyFilters();
+        });
+
+
+        // Initialization logic
+        document.addEventListener('sniper-helper-loaded', () => {
+            isHost = true;
+            window.isSniperHelperLoaded = true;
+            ui.statusDiv.textContent = "Scanner is idle. Ready to start.";
+            ui.pageMode.innerHTML = 'Mode: <span class="font-bold text-green-400">Host (You are running the scanner)</span>';
+            ui.hostControls.style.display = 'block';
+            ui.viewerControls.style.display = 'none';
+
+             ui.toggleScannerBtn.addEventListener('click', () => {
+                scannerRunning = !scannerRunning;
+                if (scannerRunning) {
+                    ui.toggleScannerBtn.textContent = 'Stop Scanner';
+                    ui.toggleScannerBtn.classList.replace('bg-blue-600', 'bg-red-600');
+                    runScanCycle();
+                } else {
+                    ui.toggleScannerBtn.textContent = 'Start Scanner';
+                    ui.toggleScannerBtn.classList.replace('bg-red-600', 'bg-blue-600');
+                    ui.statusDiv.textContent = 'Scanner stopped by user.';
+                    playerQueue = [];
+                    priceCheckQueue = [];
+                }
+            });
+        });
+
+        // Start listening to firebase immediately
+        initializeFirebaseListener();
+
+    })();
+    </script>
+</body>
+</html>
